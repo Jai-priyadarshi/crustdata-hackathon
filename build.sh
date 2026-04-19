@@ -3,7 +3,7 @@ set -e
 
 echo "--- Building frontend ---"
 cd frontend
-npm ci
+npm install
 npm run build
 cd ..
 
