@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getCampaign, getProspects, updateProspect, updateEmail, sendEmail, regenerateEmails } from '../api'
+import { getCampaign, getProspects, updateEmail, sendEmail, regenerateEmails } from '../api'
 
 const INTENT_BADGE = {
   high: 'bg-red-900/40 text-red-400 border border-red-800',
@@ -14,6 +14,70 @@ const STATUS_BADGE = {
   replied: 'bg-green-900/40 text-green-400',
 }
 
+function EmailEditor({ email, onSaved }) {
+  const [subject, setSubject] = useState(email.subject)
+  const [body, setBody] = useState(email.body)
+  const [saving, setSaving] = useState(false)
+  const [dirty, setDirty] = useState(false)
+
+  // Sync when email prop changes (e.g. switching tabs or regenerate)
+  useEffect(() => {
+    setSubject(email.subject)
+    setBody(email.body)
+    setDirty(false)
+  }, [email.id, email.subject, email.body])
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      await updateEmail(email.id, { subject, body })
+      setDirty(false)
+      onSaved()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="text-xs text-gray-500 mb-1 block">Subject</label>
+        <input
+          className="w-full bg-[#0f1117] border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500"
+          value={subject}
+          onChange={e => { setSubject(e.target.value); setDirty(true) }}
+        />
+      </div>
+      <div>
+        <label className="text-xs text-gray-500 mb-1 block">Body</label>
+        <textarea
+          className="w-full bg-[#0f1117] border border-gray-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-violet-500 resize-none leading-relaxed"
+          rows={10}
+          value={body}
+          onChange={e => { setBody(e.target.value); setDirty(true) }}
+        />
+      </div>
+      {dirty && (
+        <div className="flex gap-2">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="bg-violet-600 hover:bg-violet-500 disabled:opacity-60 text-white text-sm px-4 py-2 rounded-lg transition-colors"
+          >
+            {saving ? 'Saving...' : 'Save changes'}
+          </button>
+          <button
+            onClick={() => { setSubject(email.subject); setBody(email.body); setDirty(false) }}
+            className="text-gray-400 hover:text-white text-sm px-4 py-2 rounded-lg border border-gray-700 transition-colors"
+          >
+            Discard
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function CampaignDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -21,10 +85,15 @@ export default function CampaignDetail() {
   const [prospects, setProspects] = useState([])
   const [selected, setSelected] = useState(null)
   const [activeEmail, setActiveEmail] = useState(0)
-  const [editingEmail, setEditingEmail] = useState(null)
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
+
+  const reload = useCallback(async (keepSelectedId) => {
+    const [, p] = await Promise.all([getCampaign(id), getProspects(id)])
+    setProspects(p.data)
+    if (keepSelectedId) setSelected(p.data.find(x => x.id === keepSelectedId) || p.data[0])
+  }, [id])
 
   useEffect(() => {
     Promise.all([getCampaign(id), getProspects(id)]).then(([c, p]) => {
@@ -38,9 +107,7 @@ export default function CampaignDetail() {
     setSending(true)
     try {
       await sendEmail(emailId)
-      const updated = await getProspects(id)
-      setProspects(updated.data)
-      setSelected(updated.data.find(p => p.id === selected?.id))
+      await reload(selected?.id)
     } catch (e) {
       alert(e.response?.data?.error || 'Send failed')
     } finally {
@@ -48,21 +115,12 @@ export default function CampaignDetail() {
     }
   }
 
-  async function handleSaveEmail(email) {
-    await updateEmail(email.id, { subject: editingEmail.subject, body: editingEmail.body })
-    const updated = await getProspects(id)
-    setProspects(updated.data)
-    setSelected(updated.data.find(p => p.id === selected?.id))
-    setEditingEmail(null)
-  }
-
   async function handleRegenerate() {
     setRegenerating(true)
     try {
       await regenerateEmails(selected.id)
-      const updated = await getProspects(id)
-      setProspects(updated.data)
-      setSelected(updated.data.find(p => p.id === selected?.id))
+      await reload(selected?.id)
+      setActiveEmail(0)
     } finally {
       setRegenerating(false)
     }
@@ -91,14 +149,20 @@ export default function CampaignDetail() {
           {prospects.map(p => (
             <div
               key={p.id}
-              onClick={() => { setSelected(p); setActiveEmail(0); setEditingEmail(null) }}
+              onClick={() => { setSelected(p); setActiveEmail(0) }}
               className={`px-4 py-4 border-b border-gray-800 cursor-pointer hover:bg-[#1a1d27] transition-colors ${selected?.id === p.id ? 'bg-[#1a1d27] border-l-2 border-l-violet-500' : ''}`}
             >
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-white font-medium text-sm truncate">{p.name}</p>
-                  <p className="text-gray-400 text-xs truncate">{p.title}</p>
-                  <p className="text-gray-500 text-xs truncate">{p.company}</p>
+                <div className="flex items-start gap-2.5 min-w-0">
+                  {p.profile_picture
+                    ? <img src={p.profile_picture} alt={p.name} className="w-8 h-8 rounded-full object-cover shrink-0 mt-0.5" />
+                    : <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center shrink-0 mt-0.5 text-gray-400 text-xs font-medium">{p.name[0]}</div>
+                  }
+                  <div className="min-w-0">
+                    <p className="text-white font-medium text-sm truncate">{p.name}</p>
+                    <p className="text-gray-400 text-xs truncate">{p.title}</p>
+                    <p className="text-gray-500 text-xs truncate">{p.company}</p>
+                  </div>
                 </div>
                 <div className="flex flex-col items-end gap-1 shrink-0">
                   <span className={`text-xs px-2 py-0.5 rounded-full ${INTENT_BADGE[p.intent]}`}>{INTENT_DOT[p.intent]} {p.intent}</span>
@@ -118,11 +182,17 @@ export default function CampaignDetail() {
             <div className="max-w-2xl">
               {/* Prospect header */}
               <div className="flex items-start justify-between mb-6">
-                <div>
+                <div className="flex items-start gap-4">
+                  {selected.profile_picture
+                    ? <img src={selected.profile_picture} alt={selected.name} className="w-14 h-14 rounded-full object-cover shrink-0" />
+                    : <div className="w-14 h-14 rounded-full bg-gray-700 flex items-center justify-center shrink-0 text-gray-300 text-xl font-semibold">{selected.name[0]}</div>
+                  }
+                  <div>
                   <h2 className="text-xl font-bold text-white">{selected.name}</h2>
                   <p className="text-gray-400">{selected.title} · {selected.company}</p>
                   {selected.email && <p className="text-violet-400 text-sm mt-1">{selected.email}</p>}
                   {selected.location && <p className="text-gray-500 text-sm">{selected.location}</p>}
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   {selected.linkedin_url && (
@@ -150,7 +220,7 @@ export default function CampaignDetail() {
                     {emails.map((e, i) => (
                       <button
                         key={e.id}
-                        onClick={() => { setActiveEmail(i); setEditingEmail(null) }}
+                        onClick={() => setActiveEmail(i)}
                         className={`text-sm px-3 py-1.5 rounded-lg transition-colors ${activeEmail === i ? 'bg-violet-600 text-white' : 'text-gray-400 hover:text-white border border-gray-700'}`}
                       >
                         Email {e.sequence_number} {e.scheduled_day > 0 ? `(Day ${e.scheduled_day})` : '(Day 0)'}
@@ -168,45 +238,21 @@ export default function CampaignDetail() {
 
                 {currentEmail && (
                   <div className="bg-[#1a1d27] border border-gray-800 rounded-2xl p-5">
-                    {editingEmail ? (
-                      <div className="space-y-3">
-                        <input
-                          className="w-full bg-[#0f1117] border border-gray-700 rounded-xl px-4 py-2 text-white text-sm focus:outline-none focus:border-violet-500"
-                          value={editingEmail.subject}
-                          onChange={e => setEditingEmail({ ...editingEmail, subject: e.target.value })}
-                          placeholder="Subject"
-                        />
-                        <textarea
-                          className="w-full bg-[#0f1117] border border-gray-700 rounded-xl px-4 py-2 text-white text-sm focus:outline-none focus:border-violet-500 resize-none"
-                          rows={8}
-                          value={editingEmail.body}
-                          onChange={e => setEditingEmail({ ...editingEmail, body: e.target.value })}
-                        />
-                        <div className="flex gap-2">
-                          <button onClick={() => handleSaveEmail(currentEmail)} className="bg-violet-600 hover:bg-violet-500 text-white text-sm px-4 py-2 rounded-lg transition-colors">Save</button>
-                          <button onClick={() => setEditingEmail(null)} className="text-gray-400 hover:text-white text-sm px-4 py-2 rounded-lg border border-gray-700 transition-colors">Cancel</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex items-start justify-between mb-3">
-                          <p className="text-gray-300 font-medium text-sm">Subject: {currentEmail.subject}</p>
-                          <button onClick={() => setEditingEmail({ subject: currentEmail.subject, body: currentEmail.body })}
-                            className="text-gray-600 hover:text-gray-300 text-xs transition-colors">Edit</button>
-                        </div>
-                        <p className="text-gray-300 text-sm whitespace-pre-wrap leading-relaxed">{currentEmail.body}</p>
-                        <div className="mt-4 flex gap-2">
-                          <button
-                            onClick={() => handleSendEmail(currentEmail.id)}
-                            disabled={sending || !!currentEmail.sent_at || !selected.email}
-                            className="bg-violet-600 hover:bg-violet-500 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-white text-sm px-4 py-2 rounded-lg transition-colors"
-                          >
-                            {currentEmail.sent_at ? 'Sent ✓' : sending ? 'Sending...' : 'Send'}
-                          </button>
-                          {!selected.email && <p className="text-yellow-600 text-xs self-center">No email address found</p>}
-                        </div>
-                      </>
-                    )}
+                    <EmailEditor
+                      key={currentEmail.id}
+                      email={currentEmail}
+                      onSaved={() => reload(selected?.id)}
+                    />
+                    <div className="mt-4 pt-4 border-t border-gray-800 flex gap-2 items-center">
+                      <button
+                        onClick={() => handleSendEmail(currentEmail.id)}
+                        disabled={sending || !!currentEmail.sent_at || !selected.email}
+                        className="bg-violet-600 hover:bg-violet-500 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-white text-sm px-4 py-2 rounded-lg transition-colors"
+                      >
+                        {currentEmail.sent_at ? 'Sent ✓' : sending ? 'Sending...' : 'Send'}
+                      </button>
+                      {!selected.email && <p className="text-gray-500 text-xs">No contact email — copy & send manually</p>}
+                    </div>
                   </div>
                 )}
               </div>

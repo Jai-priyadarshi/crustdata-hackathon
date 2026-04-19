@@ -10,4 +10,5 @@ urlpatterns = [
     path('prospects/<int:prospect_id>/regenerate-emails/', views.RegenerateEmailView.as_view()),
     path('emails/<int:pk>/', views.EmailDetailView.as_view()),
     path('emails/<int:email_id>/send/', views.SendEmailView.as_view()),
+    path('scrape-url/', views.ScrapeUrlView.as_view()),
 ]

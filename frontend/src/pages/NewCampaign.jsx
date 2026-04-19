@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { runCampaign } from '../api'
+import { runCampaign, scrapeUrl } from '../api'
 
 const TONES = ['casual', 'formal', 'technical']
 
@@ -8,9 +8,11 @@ export default function NewCampaign() {
   const navigate = useNavigate()
   const [form, setForm] = useState({
     query: '',
-    product_context: '',
+    product_url: '',
     tone: 'casual',
     name: '',
+    sender_name: '',
+    sender_designation: '',
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -37,7 +39,13 @@ export default function NewCampaign() {
     }, 2500)
 
     try {
-      const res = await runCampaign(form)
+      let product_context = ''
+      if (form.product_url.trim()) {
+        setStep('Fetching product context from website...')
+        const scraped = await scrapeUrl(form.product_url.trim())
+        product_context = scraped.data.product_context
+      }
+      const res = await runCampaign({ ...form, product_context })
       clearInterval(interval)
       navigate(`/campaigns/${res.data.campaign.id}`)
     } catch (err) {
@@ -57,6 +65,30 @@ export default function NewCampaign() {
         </div>
 
         <form onSubmit={handleSubmit} className="bg-[#1a1d27] rounded-2xl p-8 border border-gray-800 space-y-6">
+
+          {/* Sender info */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Your name</label>
+              <input
+                className="w-full bg-[#0f1117] border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-violet-500"
+                placeholder="e.g. Jai"
+                value={form.sender_name}
+                onChange={e => setForm({ ...form, sender_name: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Your designation</label>
+              <input
+                className="w-full bg-[#0f1117] border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-violet-500"
+                placeholder="e.g. Founder & CEO, Geolayer"
+                value={form.sender_designation}
+                onChange={e => setForm({ ...form, sender_designation: e.target.value })}
+              />
+            </div>
+          </div>
+
+          {/* Prospect query */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
               Describe your ideal prospect
@@ -71,19 +103,20 @@ export default function NewCampaign() {
             />
           </div>
 
+          {/* Product URL */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
-              Your product context
+              Your company website
             </label>
-            <textarea
-              className="w-full bg-[#0f1117] border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-violet-500 resize-none"
-              rows={3}
-              placeholder='e.g. "Geolayer — AI tool that extracts borehole log data from PDFs into Excel/AGS automatically"'
-              value={form.product_context}
-              onChange={e => setForm({ ...form, product_context: e.target.value })}
+            <input
+              className="w-full bg-[#0f1117] border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-violet-500"
+              placeholder="https://yourcompany.com"
+              value={form.product_url}
+              onChange={e => setForm({ ...form, product_url: e.target.value })}
             />
           </div>
 
+          {/* Campaign name + tone */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">Campaign name</label>

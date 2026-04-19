@@ -53,7 +53,7 @@ export default function Dashboard() {
                 <div>
                   <p className="text-white font-medium">{c.name}</p>
                   <p className="text-gray-400 text-sm mt-1 truncate max-w-lg">{c.query}</p>
-                  <p className="text-gray-600 text-xs mt-1">{new Date(c.created_at).toLocaleDateString()}</p>
+                  <p className="text-gray-600 text-xs mt-1">{new Date(c.created_at).toLocaleString()}</p>
                 </div>
                 <div className="flex items-center gap-4">
                   <span className="text-violet-400 font-semibold">{c.prospect_count} prospects</span>

@@ -84,3 +84,4 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CRUSTDATA_API_KEY = os.getenv('CRUSTDATA')
 GEMINI_API_KEY = os.getenv('GEMINI_API')
 RESEND_API_KEY = os.getenv('RESEND_API')
+RESEND_TEST_EMAIL = os.getenv('RESEND_TEST_EMAIL', '')

@@ -6,6 +6,8 @@ class Campaign(models.Model):
     query = models.TextField()
     product_context = models.TextField(blank=True)
     tone = models.CharField(max_length=20, choices=[('formal', 'Formal'), ('casual', 'Casual'), ('technical', 'Technical')], default='casual')
+    sender_name = models.CharField(max_length=255, blank=True)
+    sender_designation = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -22,6 +24,7 @@ class Prospect(models.Model):
     company = models.CharField(max_length=255, blank=True)
     email = models.EmailField(blank=True)
     linkedin_url = models.URLField(blank=True)
+    profile_picture = models.URLField(blank=True)
     location = models.CharField(max_length=255, blank=True)
     employment_history = models.JSONField(default=list)
     skills = models.JSONField(default=list)
