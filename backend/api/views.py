@@ -236,6 +236,45 @@ class ProspectListView(APIView):
         prospects = Prospect.objects.filter(campaign_id=campaign_id).order_by('-intent', 'name')
         return Response(ProspectSerializer(prospects, many=True).data)
 
+    def post(self, request, campaign_id):
+        try:
+            campaign = Campaign.objects.get(pk=campaign_id)
+        except Campaign.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)
+
+        data = request.data
+        prospect = Prospect.objects.create(
+            campaign=campaign,
+            name=data.get('name', ''),
+            title=data.get('title', ''),
+            company=data.get('company', ''),
+            email=data.get('email', ''),
+            linkedin_url=data.get('linkedin_url', ''),
+            location=data.get('location', ''),
+            intent='low',
+            status='draft',
+        )
+
+        prospect_dict = {
+            'name': prospect.name, 'title': prospect.title,
+            'company': prospect.company, 'intent_signal': '',
+            'employment_history': [],
+        }
+        sequence = gemini.generate_sequence(
+            prospect_dict, campaign.product_context, campaign.tone,
+            campaign.sender_name, campaign.sender_designation,
+        )
+        for email_data in sequence:
+            Email.objects.create(
+                prospect=prospect,
+                sequence_number=email_data['sequence_number'],
+                subject=email_data.get('subject', ''),
+                body=email_data.get('body', ''),
+                scheduled_day=email_data.get('scheduled_day', 0),
+            )
+
+        return Response(ProspectSerializer(prospect).data, status=status.HTTP_201_CREATED)
+
 
 class ProspectDetailView(APIView):
     def get(self, request, pk):
@@ -255,6 +294,13 @@ class ProspectDetailView(APIView):
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=400)
+
+    def delete(self, request, pk):
+        try:
+            Prospect.objects.get(pk=pk).delete()
+        except Prospect.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class EmailDetailView(APIView):
