@@ -1,0 +1,33 @@
+databases:
+  - name: prospectai-db
+    databaseName: prospectai
+    user: prospectai
+    plan: free
+
+services:
+  - type: web
+    name: prospectai
+    runtime: python
+    buildCommand: bash build.sh
+    startCommand: cd backend && gunicorn backend.wsgi:application --workers 2 --bind 0.0.0.0:$PORT --timeout 120
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: prospectai-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "false"
+      - key: SCHEDULER_ENABLED
+        value: "1"
+      - key: CRUSTDATA
+        sync: false
+      - key: GEMINI_API
+        sync: false
+      - key: RESEND_API
+        sync: false
+      - key: RESEND_TEST_EMAIL
+        sync: false
+      - key: PYTHON_VERSION
+        value: "3.11.7"
