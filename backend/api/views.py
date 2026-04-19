@@ -90,18 +90,19 @@ class RunCampaignView(APIView):
         prospects_created = []
 
         for person in people[:filters.get('limit', 20)]:
-            basic = person.get('basic_profile', person)
-            name = basic.get('name', '') or person.get('name', '')
+            basic = person.get('basic_profile', {})
+            name = basic.get('name', '').strip()
             if not name:
                 continue
 
-            current_exp = {}
-            exp_list = person.get('experience', {}).get('employment_details', [])
-            if exp_list:
-                current_exp = exp_list[0].get('current', exp_list[0]) if isinstance(exp_list[0], dict) else {}
+            # employment_details is {current: [...], past: [...]}
+            emp = person.get('experience', {}).get('employment_details', {})
+            current_list = emp.get('current', []) if isinstance(emp, dict) else []
+            # pick the is_default entry or first
+            current_exp = next((e for e in current_list if e.get('is_default')), current_list[0] if current_list else {})
 
-            linkedin_url = basic.get('linkedin_url', '') or person.get('linkedin_url', '')
-            email_addr = basic.get('email', '') or person.get('email', '')
+            linkedin_url = person.get('social_handles', {}).get('professional_network_identifier', {}).get('profile_url', '')
+            email_addr = ''
 
             # Step 4 — enrich person
             enriched = {}
@@ -113,8 +114,10 @@ class RunCampaignView(APIView):
 
             merged = {**person, **enriched}
             final_email = merged.get('email', email_addr) or ''
-            title = current_exp.get('title', '') or merged.get('title', '')
-            company = current_exp.get('company_name', '') or merged.get('company', '')
+            title = current_exp.get('title', '') or basic.get('current_title', '')
+            company = current_exp.get('name', '')
+            location_raw = basic.get('location', {})
+            location = location_raw.get('raw', '') if isinstance(location_raw, dict) else str(location_raw)
 
             # Step 5 — intent detection
             intent_data = {"intent_score": "LOW", "signal": "", "quote": ""}
@@ -125,6 +128,8 @@ class RunCampaignView(APIView):
                 except Exception as e:
                     logger.warning(f"Intent detection failed for {name}: {e}")
 
+            all_emp = list(current_list) + emp.get('past', []) if isinstance(emp, dict) else []
+
             prospect = Prospect.objects.create(
                 campaign=campaign,
                 name=name,
@@ -132,8 +137,8 @@ class RunCampaignView(APIView):
                 company=company,
                 email=final_email,
                 linkedin_url=linkedin_url,
-                location=basic.get('location', ''),
-                employment_history=person.get('experience', {}).get('employment_details', []),
+                location=location,
+                employment_history=all_emp,
                 skills=merged.get('skills', []),
                 intent=intent_data['intent_score'].lower(),
                 intent_signal=intent_data.get('signal', ''),
@@ -146,7 +151,7 @@ class RunCampaignView(APIView):
             prospect_dict = {
                 'name': name, 'title': title, 'company': company,
                 'intent_signal': intent_data.get('signal', ''),
-                'employment_history': person.get('experience', {}).get('employment_details', []),
+                'employment_history': all_emp,
             }
             try:
                 sequence = gemini.generate_sequence(prospect_dict, product_context, tone)
