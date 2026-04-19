@@ -11,4 +11,7 @@ urlpatterns = [
     path('emails/<int:pk>/', views.EmailDetailView.as_view()),
     path('emails/<int:email_id>/send/', views.SendEmailView.as_view()),
     path('scrape-url/', views.ScrapeUrlView.as_view()),
+    path('campaigns/<int:campaign_id>/schedule/', views.ScheduleCampaignView.as_view()),
+    path('campaigns/<int:campaign_id>/cancel-schedule/', views.CancelCampaignScheduleView.as_view()),
+    path('prospects/<int:prospect_id>/cancel-schedule/', views.CancelScheduleView.as_view()),
 ]

@@ -8,6 +8,7 @@ from rest_framework import status
 from .models import Campaign, Prospect, Email
 from .serializers import CampaignSerializer, ProspectSerializer, EmailSerializer
 from .services import gemini, crustdata
+from .services.scheduler import schedule_prospect_emails
 
 logger = logging.getLogger(__name__)
 
@@ -424,3 +425,46 @@ class RegenerateEmailView(APIView):
             emails.append(e)
 
         return Response(EmailSerializer(emails, many=True).data)
+
+
+class ScheduleCampaignView(APIView):
+    def post(self, request, campaign_id):
+        try:
+            campaign = Campaign.objects.get(pk=campaign_id)
+        except Campaign.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)
+
+        # Allow overriding send settings per request
+        if 'send_days' in request.data:
+            campaign.send_days = request.data['send_days']
+        if 'send_window_start' in request.data:
+            campaign.send_window_start = request.data['send_window_start']
+        if 'send_window_end' in request.data:
+            campaign.send_window_end = request.data['send_window_end']
+        campaign.save(update_fields=['send_days', 'send_window_start', 'send_window_end'])
+
+        prospects = list(campaign.prospects.prefetch_related('emails').all())
+        for i, prospect in enumerate(prospects):
+            schedule_prospect_emails(prospect, campaign, prospect_index=i)
+
+        return Response({'scheduled': len(prospects)})
+
+
+class CancelScheduleView(APIView):
+    def post(self, request, prospect_id):
+        try:
+            prospect = Prospect.objects.get(pk=prospect_id)
+        except Prospect.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)
+        prospect.emails.filter(status='scheduled').update(status='draft', scheduled_at=None)
+        return Response({'cancelled': True})
+
+
+class CancelCampaignScheduleView(APIView):
+    def post(self, request, campaign_id):
+        try:
+            campaign = Campaign.objects.get(pk=campaign_id)
+        except Campaign.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)
+        count = Email.objects.filter(prospect__campaign=campaign, status='scheduled').update(status='draft', scheduled_at=None)
+        return Response({'cancelled': count})

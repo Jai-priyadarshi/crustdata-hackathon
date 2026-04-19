@@ -8,6 +8,9 @@ class Campaign(models.Model):
     tone = models.CharField(max_length=20, choices=[('formal', 'Formal'), ('casual', 'Casual'), ('technical', 'Technical')], default='casual')
     sender_name = models.CharField(max_length=255, blank=True)
     sender_designation = models.CharField(max_length=255, blank=True)
+    send_days = models.JSONField(default=list)  # [0,1,2,3] = Mon-Thu
+    send_window_start = models.IntegerField(default=9)   # 9 AM
+    send_window_end = models.IntegerField(default=11)    # 11 AM
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -45,7 +48,9 @@ class Email(models.Model):
     subject = models.CharField(max_length=500, blank=True)
     body = models.TextField()
     scheduled_day = models.IntegerField(default=0)
+    scheduled_at = models.DateTimeField(null=True, blank=True)
     sent_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=10, choices=[('draft','Draft'),('scheduled','Scheduled'),('sent','Sent'),('failed','Failed')], default='draft')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

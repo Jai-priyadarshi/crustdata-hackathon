@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getCampaign, getProspects, updateEmail, sendEmail, regenerateEmails, deleteProspect, addProspect } from '../api'
+import { getCampaign, getProspects, updateEmail, updateProspect, sendEmail, regenerateEmails, deleteProspect, addProspect, scheduleCampaign, cancelSchedule, cancelCampaignSchedule } from '../api'
 
 const INTENT_BADGE = {
   high: 'bg-red-900/40 text-red-400 border border-red-800',
@@ -10,6 +10,7 @@ const INTENT_BADGE = {
 const INTENT_DOT = { high: '🔴', medium: '🟡', low: '⚪' }
 const STATUS_BADGE = {
   draft: 'bg-gray-800 text-gray-300',
+  scheduled: 'bg-violet-900/40 text-violet-400',
   sent: 'bg-blue-900/40 text-blue-400',
   replied: 'bg-green-900/40 text-green-400',
 }
@@ -68,6 +69,70 @@ function EmailEditor({ email, onSaved }) {
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+function ScheduleModal({ onClose, onConfirm, loading }) {
+  const [sendDays, setSendDays] = useState([0, 1, 2, 3])
+  const [windowStart, setWindowStart] = useState(9)
+  const [windowEnd, setWindowEnd] = useState(11)
+
+  function toggleDay(d) {
+    setSendDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort())
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4" onClick={onClose}>
+      <div className="bg-[#1a1d27] border border-gray-700 rounded-2xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-white font-semibold">Schedule Campaign</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-xl leading-none">×</button>
+        </div>
+
+        <div className="space-y-5">
+          <div>
+            <label className="text-xs text-gray-400 mb-2 block">Send on</label>
+            <div className="flex gap-1.5 flex-wrap">
+              {DAYS.map((d, i) => (
+                <button key={d} type="button" onClick={() => toggleDay(i)}
+                  className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${sendDays.includes(i) ? 'bg-violet-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>
+                  {d}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs text-gray-400 mb-2 block">Send window (local time)</label>
+            <div className="flex items-center gap-3">
+              <select value={windowStart} onChange={e => setWindowStart(+e.target.value)}
+                className="bg-[#0f1117] border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-violet-500">
+                {Array.from({length: 12}, (_, i) => i + 6).map(h => (
+                  <option key={h} value={h}>{h}:00 AM</option>
+                ))}
+              </select>
+              <span className="text-gray-500 text-sm">to</span>
+              <select value={windowEnd} onChange={e => setWindowEnd(+e.target.value)}
+                className="bg-[#0f1117] border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-violet-500">
+                {Array.from({length: 12}, (_, i) => i + 7).map(h => (
+                  <option key={h} value={h}>{h <= 12 ? `${h}:00 ${h < 12 ? 'AM' : 'PM'}` : `${h-12}:00 PM`}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <p className="text-gray-500 text-xs">Emails send at a random time within this window in each prospect's local timezone. Each prospect is staggered 2–7 min apart.</p>
+
+          <button onClick={() => onConfirm({ send_days: sendDays, send_window_start: windowStart, send_window_end: windowEnd })}
+            disabled={loading || sendDays.length === 0}
+            className="w-full bg-violet-600 hover:bg-violet-500 disabled:opacity-60 text-white font-medium py-2.5 rounded-xl transition-colors text-sm">
+            {loading ? 'Scheduling...' : 'Schedule All Prospects'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -138,6 +203,60 @@ function AddProspectModal({ campaignId, onClose, onAdded }) {
   )
 }
 
+function EmailField({ prospect, onSaved }) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(prospect.email || '')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => { setValue(prospect.email || ''); setEditing(false) }, [prospect.id, prospect.email])
+
+  async function handleSave() {
+    if (!value.trim()) return
+    setSaving(true)
+    try {
+      await updateProspect(prospect.id, { email: value.trim() })
+      onSaved()
+    } finally {
+      setSaving(false)
+      setEditing(false)
+    }
+  }
+
+  if (prospect.email && !editing) {
+    return (
+      <p className="text-violet-400 text-sm mt-1 cursor-pointer hover:text-violet-300" onClick={() => setEditing(true)}>
+        {prospect.email}
+      </p>
+    )
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-2 mt-1">
+        <input
+          autoFocus
+          type="email"
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') setEditing(false) }}
+          className="bg-[#0f1117] border border-violet-500 rounded-lg px-3 py-1 text-white text-sm focus:outline-none w-56"
+        />
+        <button onClick={handleSave} disabled={saving}
+          className="text-xs text-violet-400 hover:text-violet-300 transition-colors">
+          {saving ? 'Saving...' : 'Save'}
+        </button>
+        <button onClick={() => setEditing(false)} className="text-xs text-gray-500 hover:text-gray-300">Cancel</button>
+      </div>
+    )
+  }
+
+  return (
+    <button onClick={() => setEditing(true)} className="text-gray-500 hover:text-violet-400 text-sm mt-1 transition-colors">
+      + Add email
+    </button>
+  )
+}
+
 export default function CampaignDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -148,7 +267,9 @@ export default function CampaignDetail() {
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
+  const [scheduling, setScheduling] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showScheduleModal, setShowScheduleModal] = useState(false)
 
   const reload = useCallback(async (keepSelectedId) => {
     const [, p] = await Promise.all([getCampaign(id), getProspects(id)])
@@ -188,6 +309,30 @@ export default function CampaignDetail() {
     }
   }
 
+  async function handleSchedule(settings) {
+    setScheduling(true)
+    try {
+      await scheduleCampaign(id, settings)
+      await reload(selected?.id)
+    } finally {
+      setScheduling(false)
+      setShowScheduleModal(false)
+    }
+  }
+
+  async function handleCancelSchedule(prospectId) {
+    await cancelSchedule(prospectId)
+    await reload(selected?.id)
+  }
+
+  async function handleCancelAll() {
+    if (!confirm('Cancel all scheduled emails for this campaign?')) return
+    await cancelCampaignSchedule(id)
+    await reload(selected?.id)
+  }
+
+  const hasScheduled = prospects.some(p => p.emails?.some(e => e.status === 'scheduled'))
+
   async function handleDelete(prospectId) {
     if (!confirm('Delete this prospect?')) return
     await deleteProspect(prospectId)
@@ -210,7 +355,20 @@ export default function CampaignDetail() {
           <h1 className="text-white font-semibold">{campaign?.name}</h1>
           <p className="text-gray-500 text-xs">{campaign?.query}</p>
         </div>
-        <span className="ml-auto text-violet-400 font-semibold">{prospects.length} prospects</span>
+        <div className="ml-auto flex items-center gap-3">
+          <span className="text-violet-400 font-semibold">{prospects.length} prospects</span>
+          {hasScheduled ? (
+            <button onClick={handleCancelAll}
+              className="bg-red-900/30 hover:bg-red-900/50 border border-red-800 text-red-400 hover:text-red-300 text-sm px-3 py-1.5 rounded-lg transition-colors">
+              ✕ Cancel All Scheduled
+            </button>
+          ) : (
+            <button onClick={() => setShowScheduleModal(true)}
+              className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white text-sm px-3 py-1.5 rounded-lg transition-colors">
+              ⏰ Schedule
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
@@ -244,7 +402,7 @@ export default function CampaignDetail() {
                     >✕</button>
                     <span className={`text-xs px-2 py-0.5 rounded-full ${INTENT_BADGE[p.intent]}`}>{INTENT_DOT[p.intent]} {p.intent}</span>
                   </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_BADGE[p.status]}`}>{p.status}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_BADGE[p.status] || 'bg-gray-800 text-gray-300'}`}>{p.status}</span>
                 </div>
               </div>
               {p.intent_signal && (
@@ -270,13 +428,13 @@ export default function CampaignDetail() {
               <div className="flex items-start justify-between mb-6">
                 <div className="flex items-start gap-4">
                   {selected.profile_picture
-                    ? <img src={selected.profile_picture} alt={selected.name} className="w-14 h-14 rounded-full object-cover shrink-0" />
-                    : <div className="w-14 h-14 rounded-full bg-gray-700 flex items-center justify-center shrink-0 text-gray-300 text-xl font-semibold">{selected.name[0]}</div>
+                    ? <img src={selected.profile_picture} alt={selected.name} className="w-24 h-24 rounded-full object-cover shrink-0" />
+                    : <div className="w-24 h-24 rounded-full bg-gray-700 flex items-center justify-center shrink-0 text-gray-300 text-3xl font-semibold">{selected.name[0]}</div>
                   }
                   <div>
                     <h2 className="text-xl font-bold text-white">{selected.name}</h2>
                     <p className="text-gray-400">{selected.title} · {selected.company}</p>
-                    {selected.email && <p className="text-violet-400 text-sm mt-1">{selected.email}</p>}
+                    <EmailField prospect={selected} onSaved={() => reload(selected.id)} />
                     {selected.location && <p className="text-gray-500 text-sm">{selected.location}</p>}
                   </div>
                 </div>
@@ -304,7 +462,8 @@ export default function CampaignDetail() {
                     {emails.map((e, i) => (
                       <button key={e.id} onClick={() => setActiveEmail(i)}
                         className={`text-sm px-3 py-1.5 rounded-lg transition-colors ${activeEmail === i ? 'bg-violet-600 text-white' : 'text-gray-400 hover:text-white border border-gray-700'}`}>
-                        Email {e.sequence_number} {e.scheduled_day > 0 ? `(Day ${e.scheduled_day})` : '(Day 0)'}
+                        Email {e.sequence_number}
+                        {e.status === 'scheduled' ? ' ⏰' : e.status === 'sent' ? ' ✓' : ` (Day ${e.scheduled_day || 0})`}
                       </button>
                     ))}
                   </div>
@@ -317,14 +476,34 @@ export default function CampaignDetail() {
                 {currentEmail && (
                   <div className="bg-[#1a1d27] border border-gray-800 rounded-2xl p-5">
                     <EmailEditor key={currentEmail.id} email={currentEmail} onSaved={() => reload(selected?.id)} />
-                    <div className="mt-4 pt-4 border-t border-gray-800 flex gap-2 items-center">
-                      <button
-                        onClick={() => handleSendEmail(currentEmail.id)}
-                        disabled={sending || !!currentEmail.sent_at || !selected.email}
-                        className="bg-violet-600 hover:bg-violet-500 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-white text-sm px-4 py-2 rounded-lg transition-colors">
-                        {currentEmail.sent_at ? 'Sent ✓' : sending ? 'Sending...' : 'Send'}
-                      </button>
-                      {!selected.email && <p className="text-gray-500 text-xs">No contact email — copy & send manually</p>}
+                    <div className="mt-4 pt-4 border-t border-gray-800 flex gap-2 items-center flex-wrap">
+                      {currentEmail.status === 'scheduled' ? (
+                        <>
+                          <span className="text-violet-400 text-xs">
+                            ⏰ Scheduled: {new Date(currentEmail.scheduled_at).toLocaleString([], {weekday:'short', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})}
+                          </span>
+                          <button onClick={() => handleCancelSchedule(selected.id)}
+                            className="text-gray-500 hover:text-red-400 text-xs border border-gray-700 px-3 py-1.5 rounded-lg transition-colors ml-auto">
+                            Cancel schedule
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => handleSendEmail(currentEmail.id)}
+                            disabled={sending || !!currentEmail.sent_at || !selected.email}
+                            className={`text-sm px-4 py-2 rounded-lg transition-colors disabled:cursor-not-allowed
+                              ${currentEmail.sent_at
+                                ? 'bg-green-700/50 text-green-300 cursor-default'
+                                : sending
+                                ? 'bg-gray-800 text-gray-500'
+                                : 'bg-yellow-600/70 hover:bg-yellow-600/90 text-yellow-100 font-medium'
+                              }`}>
+                            {currentEmail.sent_at ? 'Sent ✓' : sending ? 'Sending...' : 'Send now'}
+                          </button>
+                          {!selected.email && <p className="text-gray-500 text-xs">No contact email — copy & send manually</p>}
+                        </>
+                      )}
                     </div>
                   </div>
                 )}
@@ -335,11 +514,10 @@ export default function CampaignDetail() {
       </div>
 
       {showAddModal && (
-        <AddProspectModal
-          campaignId={id}
-          onClose={() => setShowAddModal(false)}
-          onAdded={() => reload(null)}
-        />
+        <AddProspectModal campaignId={id} onClose={() => setShowAddModal(false)} onAdded={() => reload(null)} />
+      )}
+      {showScheduleModal && (
+        <ScheduleModal onClose={() => setShowScheduleModal(false)} onConfirm={handleSchedule} loading={scheduling} />
       )}
     </div>
   )
