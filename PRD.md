@@ -1,5 +1,5 @@
 PRD: ProspectAI — Autonomous SDR Agent
-Powered by Crustdata × Claude API
+Powered by Crustdata × Gemini API
 
 1. Product Vision
 ProspectAI is a natural-language-driven autonomous SDR agent that replaces Apollo + LinkedIn Sales Navigator. Users describe their ideal prospect in plain English — the agent finds, enriches, detects intent signals, generates personalised outreach, and manages follow-up sequences automatically.
@@ -27,7 +27,7 @@ User types:
 
 "Find 20 Directors and Principal Geotechnical Engineers at mid-size site investigation firms in Australia and UK"
 
-Claude translates this to structured Crustdata filters:
+Gemini translates this to structured Crustdata filters:
 json{
   "titles": ["Director", "Principal Geotechnical Engineer", "Managing Director"],
   "industries": ["Civil Engineering", "Geotechnical Engineering"],
@@ -82,7 +82,7 @@ POST /web/search/live
 
 ### Feature 4 — Personalised Email Generation
 
-Claude generates a personalised email per prospect using:
+Gemini generates a personalised email per prospect using:
 - Their name, title, company
 - Their employment history
 - Intent signals found
@@ -128,11 +128,11 @@ Each email personalised to the prospect's context.
 ```
 Frontend (React + Vite + Tailwind)
         ↓
-Backend (FastAPI or Django)
+Backend (Django)
         ↓
 ┌─────────────────────────────────┐
 │         Orchestration Layer      │
-│         (Claude API)             │
+│         (Gemini API)             │
 │  - Query translation             │
 │  - Intent analysis               │
 │  - Email generation              │
@@ -148,7 +148,7 @@ Backend (FastAPI or Django)
 │  /web/search/live                │
 └─────────────────────────────────┘
         ↓
-Database (PostgreSQL / Supabase)
+Database (Django ORM + SQLite → PostgreSQL)
 - Campaigns
 - Prospects
 - Emails
@@ -162,16 +162,16 @@ Database (PostgreSQL / Supabase)
 | Layer | Technology |
 |---|---|
 | Frontend | React + Vite + Tailwind |
-| Backend | FastAPI (Python) |
-| AI Orchestration | Claude API (claude-sonnet-4-20250514) |
+| Backend | Django (Python) |
+| AI Orchestration | Gemini API (gemini-2.0-flash) |
 | Prospect Data | Crustdata APIs |
-| Database | Supabase (PostgreSQL) |
-| Email sending | Resend or SendGrid API |
+| Database | Django ORM + SQLite (dev) → PostgreSQL (prod) |
+| Email sending | Resend API |
 | Hosting | Render or Railway |
 
 ---
 
-## 6. Claude API Usage — Specific Prompts
+## 6. Gemini API Usage — Specific Prompts
 
 ### Prompt 1 — Query Translation
 ```
@@ -254,8 +254,8 @@ Keep each under 80 words. Different opening line each time.
 
 | Hour | Task |
 |---|---|
-| 0–2 | Setup: React frontend, FastAPI backend, Crustdata auth, Claude API auth |
-| 2–4 | Feature 1: Natural language query → API filters (Claude translation) |
+| 0–2 | Setup: React frontend, Django backend, Crustdata auth, Gemini API auth |
+| 2–4 | Feature 1: Natural language query → API filters (Gemini translation) |
 | 4–6 | Feature 2: Prospect discovery pipeline (company → person → enrich) |
 | 6–8 | Feature 3: Intent signal detection via web search |
 | 8–10 | Feature 4: Email generation per prospect |
@@ -270,7 +270,7 @@ Keep each under 80 words. Different opening line each time.
 - **Real use case** — you're using this for Geolayer right now. Judges love that.
 - **Full vertical demo** — geotechnical ICP is specific and memorable
 - **Every Crustdata API used** — shows depth of integration
-- **Claude does the hard work** — query translation, intent analysis, email writing, sequence generation
+- **Gemini does the hard work** — query translation, intent analysis, email writing, sequence generation
 - **Genuinely useful** — not a toy, a real sales tool
 
 ---
